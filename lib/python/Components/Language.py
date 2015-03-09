@@ -25,8 +25,8 @@ class Language:
 		self.ll = os.listdir(LPATH)
 		# FIXME make list dynamically
 		# name, iso-639 language, iso-3166 country. Please don't mix language&country!
-		self.addLanguage("English (UK)", "en", "GB", "ISO-8859-15")
 		self.addLanguage("Italiano", "it", "IT", "ISO-8859-15")
+                self.addLanguage("English (UK)", "en", "GB", "ISO-8859-15")
 		self.addLanguage("Български", "bg", "BG", "ISO-8859-15")
 		self.addLanguage("Bokmål", "nb", "NO", "ISO-8859-15")
 		self.addLanguage("Català", "ca", "AD", "ISO-8859-15")
@@ -160,7 +160,7 @@ class Language:
 			else:
 				os.system("opkg remove --autoremove --force-depends " + Lpackagename + delLang[:2])
 		else:
-			print "Delete all lang except ", lang
+			print"Delete all lang except ", lang
 			ll = os.listdir(LPATH)
 			for x in ll:
 				if len(x) > 2:
