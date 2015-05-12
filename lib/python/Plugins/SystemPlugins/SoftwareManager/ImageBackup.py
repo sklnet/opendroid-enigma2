@@ -1,5 +1,5 @@
 #################################################################################
-# FULL BACKUP UYILITY FOR ENIGMA2, SUPPORTS THE MODELS OE-A 2.3     			#
+# FULL BACKUP UYILITY FOR ENIGMA2, SUPPORTS THE MODELS OE-A 3.0     			#
 #	                         						                            #
 #					MAKES A FULLBACK-UP READY FOR FLASHING.						#
 #																				#
@@ -18,7 +18,7 @@ import commands
 import datetime
 from boxbranding import getBoxType, getMachineBrand, getMachineName, getDriverDate, getImageVersion, getImageBuild, getBrandOEM, getMachineBuild, getImageFolder, getMachineUBINIZE, getMachineMKUBIFS, getMachineMtdKernel, getMachineKernelFile, getMachineRootFile, getImageFileSystem
 
-VERSION = "Version 4.3 opendroid"
+VERSION = "Version 5.0 Opendroid"
 
 HaveGZkernel = True
 if getBrandOEM() in ("fulan"):
@@ -262,7 +262,7 @@ class ImageBackup(Screen):
 		system('mv %s/vmlinux.gz %s/%s' %(self.WORKDIR, self.MAINDEST, self.KERNELBIN))
 		cmdlist.append('echo "rename this file to "force" to force an update without confirmation" > %s/noforce' %self.MAINDEST)
 
-		if self.MODEL in ("gbquad", "gbquadplus", "gb800ue", "gb800ueplus", "gbultraue"):
+		if self.MODEL in ("gbquad", "gbquadplus", "gb800ue", "gb800ueplus", "gbultraue", "twinboxlcd"):
 			lcdwaitkey = '/usr/share/lcdwaitkey.bin'
 			lcdwarning = '/usr/share/lcdwarning.bin'
 			if path.exists(lcdwaitkey):

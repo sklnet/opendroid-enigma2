@@ -38,17 +38,25 @@ typedef enum
 	PROGRESSIVE_DOWNLOAD	= 0x00000002
 } eServiceMP3Flags;
 
+/*
+ * GstPlayFlags flags from playbin2. It is the policy of GStreamer to
+ * not publicly expose element-specific enums. That's why this
+ * GstPlayFlags enum has been copied here.
+ */
 typedef enum
 {
-	GST_PLAY_FLAG_VIDEO         = 0x00000001,
-	GST_PLAY_FLAG_AUDIO         = 0x00000002,
-	GST_PLAY_FLAG_TEXT          = 0x00000004,
-	GST_PLAY_FLAG_VIS           = 0x00000008,
-	GST_PLAY_FLAG_SOFT_VOLUME   = 0x00000010,
-	GST_PLAY_FLAG_NATIVE_AUDIO  = 0x00000020,
-	GST_PLAY_FLAG_NATIVE_VIDEO  = 0x00000040,
-	GST_PLAY_FLAG_DOWNLOAD      = 0x00000080,
-	GST_PLAY_FLAG_BUFFERING     = 0x00000100
+	GST_PLAY_FLAG_VIDEO         = (1 << 0),
+	GST_PLAY_FLAG_AUDIO         = (1 << 1),
+	GST_PLAY_FLAG_TEXT          = (1 << 2),
+	GST_PLAY_FLAG_VIS           = (1 << 3),
+	GST_PLAY_FLAG_SOFT_VOLUME   = (1 << 4),
+	GST_PLAY_FLAG_NATIVE_AUDIO  = (1 << 5),
+	GST_PLAY_FLAG_NATIVE_VIDEO  = (1 << 6),
+	GST_PLAY_FLAG_DOWNLOAD      = (1 << 7),
+	GST_PLAY_FLAG_BUFFERING     = (1 << 8),
+	GST_PLAY_FLAG_DEINTERLACE   = (1 << 9),
+	GST_PLAY_FLAG_SOFT_COLORBALANCE = (1 << 10),
+	GST_PLAY_FLAG_FORCE_FILTERS = (1 << 11),
 } GstPlayFlags;
 
 // eServiceFactoryMP3
@@ -464,7 +472,7 @@ eServiceMP3::eServiceMP3(eServiceReference ref):
 		m_sourceinfo.audiotype = atMP3;
 	else if ( strcasecmp(ext, ".wma") == 0 )
 		m_sourceinfo.audiotype = atWMA;
-	else if ( (strncmp(filename, "/autofs/", 8) || strncmp(filename+strlen(filename)-13, "/track-", 7) || strcasecmp(ext, ".wav")) == 0 )
+	else if ( (strncmp(filename, "/media/sr", 9) || strncmp(filename+strlen(filename)-13, "/track-", 7) || strcasecmp(ext, ".wav")) == 0 )
 		m_sourceinfo.containertype = ctCDA;
 	if ( strcasecmp(ext, ".dat") == 0 )
 	{
@@ -536,12 +544,12 @@ eServiceMP3::eServiceMP3(eServiceReference ref):
 #endif
 	if ( m_gst_playbin )
 	{
-		guint flags;
-		g_object_get(G_OBJECT (m_gst_playbin), "flags", &flags, NULL);
-		/* avoid video conversion, let the (hardware) sinks handle that */
-		flags |= GST_PLAY_FLAG_NATIVE_VIDEO;
-		/* volume control is done by hardware */
-		flags &= ~GST_PLAY_FLAG_SOFT_VOLUME;
+		/*
+		 * avoid video conversion, let the dvbmediasink handle that using native video flag
+		 * volume control is done by hardware, do not use soft volume flag
+		 */
+		guint flags = GST_PLAY_FLAG_AUDIO | GST_PLAY_FLAG_VIDEO | \
+				GST_PLAY_FLAG_TEXT | GST_PLAY_FLAG_NATIVE_VIDEO;
 		if ( m_sourceinfo.is_streaming )
 		{
 			g_signal_connect (G_OBJECT (m_gst_playbin), "notify::source", G_CALLBACK (playbinNotifySource), this);
@@ -559,7 +567,8 @@ eServiceMP3::eServiceMP3(eServiceReference ref):
 			 */
 			flags |= GST_PLAY_FLAG_BUFFERING;
 			/* increase the default 2 second / 2 MB buffer limitations to 5s / 5MB */
-			g_object_set(G_OBJECT(m_gst_playbin), "buffer-duration", 5LL * GST_SECOND, NULL);
+			/*g_object_set(G_OBJECT(m_gst_playbin), "buffer-duration", 5LL * GST_SECOND, NULL);*/
+			g_object_set(G_OBJECT(m_gst_playbin), "buffer-duration", 0, NULL);
 			g_object_set(G_OBJECT(m_gst_playbin), "buffer-size", m_buffer_size, NULL);
 		}
 		g_object_set (G_OBJECT (m_gst_playbin), "flags", flags, NULL);
@@ -570,7 +579,11 @@ eServiceMP3::eServiceMP3(eServiceReference ref):
 		else
 		{
 			m_subs_to_pull_handler_id = g_signal_connect (subsink, "new-buffer", G_CALLBACK (gstCBsubtitleAvail), this);
+#if GST_VERSION_MAJOR < 1
 			g_object_set (G_OBJECT (subsink), "caps", gst_caps_from_string("text/plain; text/x-plain; text/x-raw; text/x-pango-markup; video/x-dvd-subpicture; subpicture/x-pgs"), NULL);
+#else
+			g_object_set (G_OBJECT (subsink), "caps", gst_caps_from_string("text/plain; text/x-plain; text/x-raw; text/x-pango-markup; subpicture/x-dvd; subpicture/x-pgs"), NULL);
+#endif
 			g_object_set (G_OBJECT (m_gst_playbin), "text-sink", subsink, NULL);
 			g_object_set (G_OBJECT (m_gst_playbin), "current-text", m_currentSubtitleStream, NULL);
 		}
@@ -1462,7 +1475,11 @@ subtype_t getSubtitleType(GstPad* pad, gchar *g_codec=NULL)
 			// eDebug("getSubtitleType::subtitle probe caps type=%s", g_type ? g_type : "(null)");
 			if (g_type)
 			{
+#if GST_VERSION_MAJOR < 1
 				if ( !strcmp(g_type, "video/x-dvd-subpicture") )
+#else
+				if ( !strcmp(g_type, "subpicture/x-dvd") )
+#endif
 					type = stVOB;
 				else if ( !strcmp(g_type, "text/x-pango-markup") )
 					type = stSRT;
@@ -2289,13 +2306,6 @@ void eServiceMP3::pullSubtitle(GstBuffer *buffer)
 		{
 			if ( subType < stVOB )
 			{
-				int delay = eConfigManager::getConfigIntValue("config.subtitles.pango_subtitles_delay");
-				int subtitle_fps = eConfigManager::getConfigIntValue("config.subtitles.pango_subtitles_fps");
-
-				double convert_fps = 1.0;
-				if (subtitle_fps > 1 && m_framerate > 0)
-					convert_fps = subtitle_fps / (double)m_framerate;
-
 #if GST_VERSION_MAJOR < 1
 				std::string line((const char*)GST_BUFFER_DATA(buffer), len);
 #else
@@ -2303,7 +2313,7 @@ void eServiceMP3::pullSubtitle(GstBuffer *buffer)
 #endif
 				// eDebug("got new text subtitle @ buf_pos = %lld ns (in pts=%lld), dur=%lld: '%s' ", buf_pos, buf_pos/11111, duration_ns, line.c_str());
 
-				uint32_t start_ms = ((buf_pos / 1000000ULL) * convert_fps) + delay;
+				uint32_t start_ms = buf_pos / 1000000ULL;
 				uint32_t end_ms = start_ms + (duration_ns / 1000000ULL);
 				m_subtitle_pages.insert(subtitle_pages_map_pair_t(end_ms, subtitle_page_t(start_ms, end_ms, line)));
 				m_subtitle_sync_timer->start(1, true);
@@ -2322,7 +2332,8 @@ void eServiceMP3::pullSubtitle(GstBuffer *buffer)
 void eServiceMP3::pushSubtitles()
 {
 	pts_t running_pts = 0;
-	int32_t next_timer = 0, decoder_ms, start_ms, end_ms, diff_start_ms, diff_end_ms;
+	int32_t next_timer = 0, decoder_ms, start_ms, end_ms, diff_start_ms, diff_end_ms, delay_ms;
+	double convert_fps = 1.0;
 	subtitle_pages_map_t::iterator current;
 
 	// wait until clock is stable
@@ -2349,6 +2360,7 @@ void eServiceMP3::pushSubtitles()
 	}
 
 	decoder_ms = running_pts / 90;
+	delay_ms = 0;
 
 #if 0
 		// eDebug("\n*** all subs: ");
@@ -2367,10 +2379,20 @@ void eServiceMP3::pushSubtitles()
 		// eDebug("\n\n");
 #endif
 
-	for (current = m_subtitle_pages.lower_bound(decoder_ms); current != m_subtitle_pages.end(); current++)
+	if (m_currentSubtitleStream >= 0 && m_currentSubtitleStream < (int)m_subtitleStreams.size() &&
+		m_subtitleStreams[m_currentSubtitleStream].type &&
+		m_subtitleStreams[m_currentSubtitleStream].type < stVOB)
 	{
-		start_ms = current->second.start_ms;
-		end_ms = current->second.end_ms;
+		delay_ms = eConfigManager::getConfigIntValue("config.subtitles.pango_subtitles_delay") / 90;
+		int subtitle_fps = eConfigManager::getConfigIntValue("config.subtitles.pango_subtitles_fps");
+		if (subtitle_fps > 1 && m_framerate > 0)
+			convert_fps = subtitle_fps / (double)m_framerate;
+	}
+
+	for (current = m_subtitle_pages.begin(); current != m_subtitle_pages.end(); current++)
+	{
+		start_ms = (current->second.start_ms * convert_fps) + delay_ms;
+		end_ms = (current->second.end_ms * convert_fps) + delay_ms;
 		diff_start_ms = start_ms - decoder_ms;
 		diff_end_ms = end_ms - decoder_ms;
 

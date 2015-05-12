@@ -377,7 +377,7 @@ class doFlashImage(Screen):
 					self["key_blue"].setText("opendroidimages")
 				else:
 					self.feedurl = feedurl_opendroid
-					self["key_blue"].setText("opendroid 4.3")
+					self["key_blue"].setText("opendroid 5.0")
 			else:
 				self.feedurl = feedurl_atv
 				self["key_blue"].setText("")
